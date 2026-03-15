@@ -17,7 +17,12 @@ class Fetcher
         #[Schema(description: 'Full URL to fetch (e.g., docs page)')]
         string $url
     ): string {
-        $content = @file_get_contents($url);
+        $context = stream_context_create([
+            'http' => [
+                'header' => "Accept: text/plain\r\n",
+            ],
+        ]);
+        $content = @file_get_contents($url, false, $context);
         if ($content === false) {
             throw new \InvalidArgumentException("Failed to fetch $url");
         }
