@@ -284,6 +284,208 @@ class Fetcher
         return $this->fetchDocsUrl($url);
     }
 
+    #[McpTool(
+        name: 'generate_plugin_page',
+        description: 'Generates a properly-structured FlightPHP docs plugin page in markdown. '
+            . 'Plugin pages focus on Flight-native integration (Flight::register, DI wiring, route usage), '
+            . 'not generic library usage. Returns a complete markdown string ready to save as a .md file '
+            . 'in the awesome-plugins/ section of the docs site.',
+        annotations: new ToolAnnotations(
+            readOnlyHint: true,
+            destructiveHint: false,
+            idempotentHint: true,
+            openWorldHint: false,
+        )
+    )]
+    public function generatePluginPage(
+        #[Schema(description: 'Plugin display name, e.g. "Flight Session"')]
+        string $name,
+        #[Schema(description: 'One-paragraph description of what the plugin does')]
+        string $description,
+        #[Schema(description: 'Full GitHub repository URL, e.g. https://github.com/flightphp/session')]
+        string $github_url = '',
+        #[Schema(description: 'Composer package name, e.g. flightphp/session')]
+        string $composer_package = '',
+        #[Schema(description: 'PHP code showing Flight-native setup: Flight::register(), DI container wiring, etc.')]
+        string $flight_setup_example = '',
+        #[Schema(description: 'PHP code showing usage inside a Flight route or service')]
+        string $usage_example = '',
+        #[Schema(description: 'Free text describing available configuration options')]
+        string $config_options = ''
+    ): string {
+        $lines = [];
+
+        $lines[] = "# {$name}";
+        $lines[] = '';
+        $lines[] = $description;
+
+        if ($github_url !== '') {
+            $lines[] = '';
+            $lines[] = "Visit the [Github repository]({$github_url}) for the full source code and details.";
+        }
+
+        $lines[] = '';
+        $lines[] = '## Installation';
+        $lines[] = '';
+        $lines[] = 'Install the plugin via Composer:';
+        $lines[] = '';
+        $lines[] = '```bash';
+        $lines[] = $composer_package !== '' ? "composer require {$composer_package}" : '# TODO: composer require your-package-here';
+        $lines[] = '```';
+
+        $lines[] = '';
+        $lines[] = '## Setup in Flight';
+        $lines[] = '';
+        $lines[] = '```php';
+        $lines[] = $flight_setup_example !== '' ? $flight_setup_example : '// TODO: Register the plugin with Flight here, e.g. Flight::register(...)';
+        $lines[] = '```';
+
+        $lines[] = '';
+        $lines[] = '## Usage';
+        $lines[] = '';
+        $lines[] = '```php';
+        $lines[] = $usage_example !== '' ? $usage_example : '// TODO: Show how to use the plugin inside a Flight route or service';
+        $lines[] = '```';
+
+        if ($config_options !== '') {
+            $lines[] = '';
+            $lines[] = '## Configuration';
+            $lines[] = '';
+            $lines[] = $config_options;
+        }
+
+        return implode("\n", $lines);
+    }
+
+    #[McpTool(
+        name: 'generate_learn_page',
+        description: 'Generates a properly-structured FlightPHP core documentation page in markdown. '
+            . 'Learn pages cover functionality built into the Flight framework — no installation step. '
+            . 'Returns a complete markdown string ready to save as a .md file in the learn/ section of the docs site.',
+        annotations: new ToolAnnotations(
+            readOnlyHint: true,
+            destructiveHint: false,
+            idempotentHint: true,
+            openWorldHint: false,
+        )
+    )]
+    public function generateLearnPage(
+        #[Schema(description: 'Page title, e.g. "Routing" or "Middleware"')]
+        string $title,
+        #[Schema(description: 'Concept introduction paragraph explaining what this feature does')]
+        string $description,
+        #[Schema(description: 'PHP code for the basic usage block')]
+        string $basic_example = '',
+        #[Schema(description: 'PHP code for a more complex or advanced scenario (section omitted if empty)')]
+        string $advanced_example = '',
+        #[Schema(description: 'Newline-separated bullet points for a Key Points section (section omitted if empty)')]
+        string $key_points = ''
+    ): string {
+        $lines = [];
+
+        $lines[] = "# {$title}";
+        $lines[] = '';
+        $lines[] = $description;
+        $lines[] = '';
+        $lines[] = '## Basic Usage';
+        $lines[] = '';
+        $lines[] = '```php';
+        $lines[] = $basic_example !== '' ? $basic_example : '// TODO: Add a basic code example here';
+        $lines[] = '```';
+
+        if ($advanced_example !== '') {
+            $lines[] = '';
+            $lines[] = '## Advanced Usage';
+            $lines[] = '';
+            $lines[] = '```php';
+            $lines[] = $advanced_example;
+            $lines[] = '```';
+        }
+
+        if ($key_points !== '') {
+            $lines[] = '';
+            $lines[] = '## Key Points';
+            $lines[] = '';
+            foreach (explode("\n", $key_points) as $point) {
+                $point = trim($point);
+                if ($point === '') {
+                    continue;
+                }
+                $lines[] = str_starts_with($point, '-') ? $point : "- {$point}";
+            }
+        }
+
+        return implode("\n", $lines);
+    }
+
+    #[McpTool(
+        name: 'generate_guide_page',
+        description: 'Generates a properly-structured FlightPHP step-by-step guide page in markdown. '
+            . 'Guide pages walk readers through building something complete with Flight end-to-end. '
+            . 'Returns a complete markdown string ready to save as a .md file in the guides/ section of the docs site.',
+        annotations: new ToolAnnotations(
+            readOnlyHint: true,
+            destructiveHint: false,
+            idempotentHint: true,
+            openWorldHint: false,
+        )
+    )]
+    public function generateGuidePage(
+        #[Schema(description: 'Guide title, e.g. "Building a REST API with Flight"')]
+        string $title,
+        #[Schema(description: 'What the reader will have built by the end of the guide')]
+        string $description,
+        #[Schema(description: 'Newline-separated list of prerequisites. Defaults to PHP 8.1+ and Composer if empty.')]
+        string $prerequisites = '',
+        #[Schema(description: 'Newline-separated step titles. Each line becomes a numbered ## Step N: section. Defaults to 3 generic placeholder steps if empty.')]
+        string $steps = ''
+    ): string {
+        $lines = [];
+
+        $lines[] = "# {$title}";
+        $lines[] = '';
+        $lines[] = $description;
+        $lines[] = '';
+        $lines[] = '## Prerequisites';
+        $lines[] = '';
+
+        if ($prerequisites !== '') {
+            foreach (explode("\n", $prerequisites) as $prereq) {
+                $prereq = trim($prereq);
+                if ($prereq === '') {
+                    continue;
+                }
+                $lines[] = str_starts_with($prereq, '-') ? $prereq : "- {$prereq}";
+            }
+        } else {
+            $lines[] = '- PHP 8.1+';
+            $lines[] = '- Composer';
+        }
+
+        $stepTitles = [];
+        if ($steps !== '') {
+            foreach (explode("\n", $steps) as $step) {
+                $step = trim($step);
+                if ($step !== '') {
+                    $stepTitles[] = $step;
+                }
+            }
+        }
+
+        if (empty($stepTitles)) {
+            $stepTitles = ['Getting Started', 'Implementation', 'Testing'];
+        }
+
+        foreach ($stepTitles as $i => $stepTitle) {
+            $lines[] = '';
+            $lines[] = '## Step ' . ($i + 1) . ": {$stepTitle}";
+            $lines[] = '';
+            $lines[] = 'TODO: Fill in this step.';
+        }
+
+        return implode("\n", $lines);
+    }
+
     #[McpResource(
         uri: 'flightphp://docs/index',
         name: 'flightphp-docs-index',
