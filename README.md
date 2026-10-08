@@ -20,8 +20,14 @@ No installation, no API keys. Just add the URL to your AI coding extension and s
 
 Once connected, your AI assistant can:
 
-- **Fetch documentation pages** — retrieve content from any FlightPHP docs URL
-- **Summarize docs** — generate focused summaries based on your specific question
+- **Read the current docs** — install guide, learn pages, step-by-step guides, and plugins
+- **Pull one section** — grab a single heading from a long page such as routing
+- **Search** — site search plus the local page catalog, with canonical docs URLs
+- **Check known footguns** — `Flight::get()`, PdoWrapper, `Flight::render()`, route return values, Latte versus Twig
+- **Scaffold docs pages** — learn, guide, and plugin markdown in the docs site's section style
+- **Follow project prompts** — new app, feature, debug, migration, and plugin prompts that read the docs first
+
+The server also sends instructions on connect. For a new app those instructions say to start from `flightphp/skeleton`, use `$this->app` and `App\` namespaces, put routes in `app/config/routes.php`, and use Twig. Short `Flight::` samples in the docs are for teaching APIs.
 
 ## IDE / AI Extension Configuration
 
@@ -98,18 +104,31 @@ Add to `~/.continue/config.json` (or `config.yaml`):
 
 ## Available Tools
 
-#### `fetch_url`
-Fetches and returns content from a documentation URL.
+| Tool | What it does |
+|------|----------------|
+| `list_docs_pages` | Lists learn topics and the install guide |
+| `get_docs_page` | Fetches a topic such as `install`, `routing`, `ai`, or `simple-pdo` |
+| `get_docs_section` | Fetches one heading from a learn or install page |
+| `list_guide_pages` / `get_guide_page` | Lists and fetches guides such as `blog` and `unit-testing` |
+| `list_plugin_pages` / `get_plugin_docs` | Lists and fetches plugin pages such as `twig`, `active-record`, and `session` |
+| `search_docs` | Searches the docs site and the local catalog |
+| `lookup_api` | Explains a documented footgun and names the page to read |
+| `fetch_url` | Fetches any `https://docs.flightphp.com/` URL |
+| `generate_learn_page` | Builds a learn page (Overview, Usage, Troubleshooting, Changelog) |
+| `generate_guide_page` | Builds a guide page with prerequisites and step bodies |
+| `generate_plugin_page` | Builds a plugin page with Flight setup and usage |
 
-**Parameters:**
-- `url` (string): Full URL to fetch (e.g., a FlightPHP docs page)
+## Prompts
 
-#### `summarize_docs`
-Summarizes fetched documentation content based on a query.
+| Prompt | What it does |
+|--------|----------------|
+| `new_flightphp_project` | Reads install, AI, autoloading, and routing, then scaffolds the skeleton |
+| `implement_flightphp_feature` | Reads the topic page before writing a feature |
+| `debug_flightphp_issue` | Reads the relevant page before diagnosing |
+| `flightphp_migration_help` | Reads the migration or comparison pages first |
+| `use_flightphp_plugin` | Reads the plugin page before integration code |
 
-**Parameters:**
-- `content` (string): The documentation content to summarize
-- `query` (string): The specific query or focus for summarization
+Resources `flightphp://docs/index`, `flightphp://guides/index`, and `flightphp://plugins/index` list the same pages, and the matching templates fetch one page by slug.
 
 ---
 
@@ -128,10 +147,13 @@ The server starts on `http://0.0.0.0:8890/mcp` by default.
 
 ```
 flightphp-mcp/
-├── composer.json          # Project dependencies
-├── server.php             # Main server entry point
+├── composer.json          # Project dependencies (PHP >= 8.1)
+├── server.php             # HTTP and stdio entry point
 ├── src/
-│   └── Fetcher.php        # MCP tools implementation
+│   ├── Fetcher.php        # MCP tools and resources
+│   ├── Prompts.php        # MCP prompts
+│   ├── DocsCatalog.php    # Page slugs and canonical URLs
+│   └── DocsClient.php     # Fetch, redirect check, and cache
 └── vendor/                # Composer dependencies
 ```
 

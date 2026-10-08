@@ -15,8 +15,6 @@ class FetcherGeneratorTest extends TestCase
         $this->fetcher = new Fetcher();
     }
 
-    // --- generatePluginPage ---
-
     public function testGeneratePluginPageRequiredOnly(): void
     {
         $output = $this->fetcher->generatePluginPage('My Plugin', 'Does great things.');
@@ -24,13 +22,12 @@ class FetcherGeneratorTest extends TestCase
         $this->assertStringContainsString('# My Plugin', $output);
         $this->assertStringContainsString('Does great things.', $output);
         $this->assertStringContainsString('## Installation', $output);
-        $this->assertStringContainsString('# TODO: composer require your-package-here', $output);
-        $this->assertStringContainsString('## Setup in Flight', $output);
-        $this->assertStringContainsString('// TODO: Register the plugin with Flight here', $output);
-        $this->assertStringContainsString('## Usage', $output);
-        $this->assertStringContainsString('// TODO: Show how to use the plugin inside a Flight route', $output);
+        $this->assertStringContainsString('Composer package name was not provided.', $output);
         $this->assertStringNotContainsString('Visit the [Github repository]', $output);
+        $this->assertStringNotContainsString('## Setup in Flight', $output);
+        $this->assertStringNotContainsString('## Usage', $output);
         $this->assertStringNotContainsString('## Configuration', $output);
+        $this->assertStringNotContainsString('TODO', $output);
     }
 
     public function testGeneratePluginPageWithGithubUrl(): void
@@ -56,7 +53,7 @@ class FetcherGeneratorTest extends TestCase
         );
 
         $this->assertStringContainsString('composer require example/my-plugin', $output);
-        $this->assertStringNotContainsString('# TODO: composer require your-package-here', $output);
+        $this->assertStringNotContainsString('Composer package name was not provided.', $output);
     }
 
     public function testGeneratePluginPageWithFlightSetupExample(): void
@@ -64,8 +61,8 @@ class FetcherGeneratorTest extends TestCase
         $setup = "Flight::register('myPlugin', MyPlugin::class);";
         $output = $this->fetcher->generatePluginPage('My Plugin', 'Desc.', flight_setup_example: $setup);
 
+        $this->assertStringContainsString('## Setup in Flight', $output);
         $this->assertStringContainsString($setup, $output);
-        $this->assertStringNotContainsString('// TODO: Register the plugin', $output);
     }
 
     public function testGeneratePluginPageWithUsageExample(): void
@@ -73,8 +70,8 @@ class FetcherGeneratorTest extends TestCase
         $usage = "Flight::route('/test', function() { Flight::myPlugin()->doThing(); });";
         $output = $this->fetcher->generatePluginPage('My Plugin', 'Desc.', usage_example: $usage);
 
+        $this->assertStringContainsString('## Usage', $output);
         $this->assertStringContainsString($usage, $output);
-        $this->assertStringNotContainsString('// TODO: Show how to use the plugin', $output);
     }
 
     public function testGeneratePluginPageWithConfigOptions(): void
@@ -95,30 +92,45 @@ class FetcherGeneratorTest extends TestCase
         $this->assertStringNotContainsString('## Configuration', $output);
     }
 
-    // --- generateLearnPage ---
+    public function testGeneratePluginPageSeeAlsoLink(): void
+    {
+        $output = $this->fetcher->generatePluginPage(
+            'My Plugin',
+            'Desc.',
+            see_also: 'SimplePdo | https://docs.flightphp.com/learn/simple-pdo'
+        );
+
+        $this->assertStringContainsString('## See Also', $output);
+        $this->assertStringContainsString('[SimplePdo](https://docs.flightphp.com/learn/simple-pdo)', $output);
+    }
 
     public function testGenerateLearnPageRequiredOnly(): void
     {
         $output = $this->fetcher->generateLearnPage('Routing', 'Flight has a powerful router.');
 
         $this->assertStringContainsString('# Routing', $output);
+        $this->assertStringContainsString('## Overview', $output);
         $this->assertStringContainsString('Flight has a powerful router.', $output);
-        $this->assertStringContainsString('## Basic Usage', $output);
-        $this->assertStringContainsString('// TODO: Add a basic code example here', $output);
+        $this->assertStringNotContainsString('## Basic Usage', $output);
         $this->assertStringNotContainsString('## Advanced Usage', $output);
+        $this->assertStringNotContainsString('## Understanding', $output);
         $this->assertStringNotContainsString('## Key Points', $output);
+        $this->assertStringNotContainsString('TODO', $output);
     }
 
-    public function testGenerateLearnPageWithBasicExample(): void
+    public function testGenerateLearnPageWithUnderstandingAndBasicExample(): void
     {
         $output = $this->fetcher->generateLearnPage(
             'Routing',
             'Intro.',
+            understanding: 'Routes connect a URL to a callback.',
             basic_example: "Flight::route('/', function() { echo 'hello'; });"
         );
 
+        $this->assertStringContainsString('## Understanding', $output);
+        $this->assertStringContainsString('Routes connect a URL to a callback.', $output);
+        $this->assertStringContainsString('## Basic Usage', $output);
         $this->assertStringContainsString("Flight::route('/', function()", $output);
-        $this->assertStringNotContainsString('// TODO: Add a basic code example here', $output);
     }
 
     public function testGenerateLearnPageAdvancedSectionOmittedWhenEmpty(): void
@@ -183,7 +195,20 @@ class FetcherGeneratorTest extends TestCase
         $this->assertStringNotContainsString('- - Already has a dash', $output);
     }
 
-    // --- generateGuidePage ---
+    public function testGenerateLearnPageChangelogAndTroubleshooting(): void
+    {
+        $output = $this->fetcher->generateLearnPage(
+            'Routing',
+            'Intro.',
+            troubleshooting: "Route parameters match by order, not by name",
+            changelog: 'v3 - Added resource routing'
+        );
+
+        $this->assertStringContainsString('## Troubleshooting', $output);
+        $this->assertStringContainsString('- Route parameters match by order, not by name', $output);
+        $this->assertStringContainsString('## Changelog', $output);
+        $this->assertStringContainsString('- v3 - Added resource routing', $output);
+    }
 
     public function testGenerateGuidePageRequiredOnly(): void
     {
@@ -194,18 +219,8 @@ class FetcherGeneratorTest extends TestCase
         $this->assertStringContainsString('## Prerequisites', $output);
         $this->assertStringContainsString('- PHP 8.1+', $output);
         $this->assertStringContainsString('- Composer', $output);
-        $this->assertStringContainsString('## Step 1: Getting Started', $output);
-        $this->assertStringContainsString('## Step 2: Implementation', $output);
-        $this->assertStringContainsString('## Step 3: Testing', $output);
-        $this->assertStringContainsString('TODO: Fill in this step.', $output);
-    }
-
-    public function testGenerateGuidePageStepBodyIsPlainProse(): void
-    {
-        $output = $this->fetcher->generateGuidePage('Guide', 'Desc.');
-
-        $this->assertStringNotContainsString('// TODO', $output);
-        $this->assertStringContainsString('TODO: Fill in this step.', $output);
+        $this->assertStringNotContainsString('## Step 1:', $output);
+        $this->assertStringNotContainsString('TODO', $output);
     }
 
     public function testGenerateGuidePageWithPrerequisites(): void
@@ -258,7 +273,19 @@ class FetcherGeneratorTest extends TestCase
         $this->assertStringContainsString('## Step 1: Set Up the Project', $output);
         $this->assertStringContainsString('## Step 2: Create Routes', $output);
         $this->assertStringContainsString('## Step 3: Add Templates', $output);
-        $this->assertStringNotContainsString('## Step 1: Getting Started', $output);
+    }
+
+    public function testGenerateGuidePageStepsWithBodies(): void
+    {
+        $output = $this->fetcher->generateGuidePage(
+            'Guide',
+            'Desc.',
+            steps: "Set Up the Project\ncomposer create-project flightphp/skeleton my-app\n---\nAdd a Route\nEdit app/config/routes.php."
+        );
+
+        $this->assertStringContainsString("## Step 1: Set Up the Project\n\ncomposer create-project flightphp/skeleton my-app", $output);
+        $this->assertStringContainsString("## Step 2: Add a Route\n\nEdit app/config/routes.php.", $output);
+        $this->assertStringNotContainsString('TODO', $output);
     }
 
     public function testGenerateGuidePageStepsSkipsBlankLines(): void
@@ -286,5 +313,18 @@ class FetcherGeneratorTest extends TestCase
         $this->assertStringContainsString('## Step 2: Beta', $output);
         $this->assertStringContainsString('## Step 3: Gamma', $output);
         $this->assertStringContainsString('## Step 4: Delta', $output);
+    }
+
+    public function testGenerateGuidePageSeeAlso(): void
+    {
+        $output = $this->fetcher->generateGuidePage(
+            'Guide',
+            'Desc.',
+            see_also: "- Already a bullet"
+        );
+
+        $this->assertStringContainsString('## See Also', $output);
+        $this->assertStringContainsString('- Already a bullet', $output);
+        $this->assertStringNotContainsString('- - Already a bullet', $output);
     }
 }

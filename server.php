@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/vendor/autoload.php';
 
+use flight\mcp\ServerInfo;
 use PhpMcp\Server\Server;
 use PhpMcp\Server\Transports\StdioServerTransport;
 use PhpMcp\Server\Transports\StreamableHttpServerTransport;
@@ -28,7 +29,8 @@ $logger = new class($isDebug) extends AbstractLogger {
 
 try {
     $server = Server::make()
-        ->withServerInfo('Flight PHP Framework Docs MCP', '1.1.0')
+        ->withServerInfo(ServerInfo::NAME, ServerInfo::VERSION)
+        ->withInstructions(ServerInfo::INSTRUCTIONS)
         ->withLogger($logger)
         ->build();
 

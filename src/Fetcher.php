@@ -3,6 +3,9 @@ declare(strict_types=1);
 
 namespace flight\mcp;
 
+use flight\mcp\Completion\GuideCompletion;
+use flight\mcp\Completion\LearnTopicCompletion;
+use flight\mcp\Completion\PluginCompletion;
 use PhpMcp\Schema\ToolAnnotations;
 use PhpMcp\Server\Attributes\CompletionProvider;
 use PhpMcp\Server\Attributes\McpResource;
@@ -12,67 +15,18 @@ use PhpMcp\Server\Attributes\Schema;
 
 class Fetcher
 {
-    private const DOCS_BASE_URL = 'https://docs.flightphp.com/learn/';
-    private const DOCS_PAGES = [
-        'routing'                       => 'Routing - URL patterns, HTTP methods, route groups, parameters, resource routing',
-        'middleware'                     => 'Middleware - Request/response filtering, authentication, execution order',
-        'requests'                       => 'Requests - HTTP request handling, query params, POST data, headers',
-        'responses'                      => 'Responses - Building responses, JSON/JSONP, redirects, status codes, headers',
-        'templates'                      => 'Views/Templates - HTML templating with Latte, Blade, Smarty, built-in PHP engine',
-        'configuration'                  => 'Configuration - Framework configuration options',
-        'autoloading'                    => 'Autoloading - Class autoloading setup',
-        'security'                       => 'Security - Best practices, CSRF, XSS prevention',
-        'events'                         => 'Events - Event manager, listeners',
-        'extending'                      => 'Extending - Custom methods, classes, extending the framework',
-        'filtering'                      => 'Filtering - Method hooks and filtering',
-        'collections'                    => 'Collections - Data collection handling',
-        'json'                           => 'JSON - JSON encoding/decoding utilities',
-        'simple-pdo'                     => 'SimplePdo - Modern PDO wrapper for database access',
-        'dependency-injection-container' => 'Dependency Injection - DIC usage, PSR-11, containers',
-        'unit-testing'                   => 'Unit Testing - Testing Flight applications',
-        'uploaded-file'                  => 'File Uploads - Handling user-uploaded files',
-        'ai'                             => 'AI Integration - AI tool integration',
-        'migrating-to-v3'                => 'Migration Guide - Upgrading from FlightPHP v2 to v3',
-        'why-frameworks'                 => 'Why Frameworks',
-        'flight-vs-another-framework'    => 'Comparison - FlightPHP vs Laravel, Slim, others',
-    ];
-
-    private const GUIDES_BASE_URL = 'https://docs.flightphp.com/en/v3/guides/';
-    private const GUIDE_PAGES = [
-        'blog'         => 'Building a Blog - Full project: routing, Latte templates, forms, data storage, error handling',
-        'unit-testing' => 'Unit Testing & SOLID Principles - PHPUnit setup, testable code, mocking, architecture',
-    ];
-
-    private const PLUGINS_BASE_URL = 'https://docs.flightphp.com/en/v3/awesome-plugins/';
-    private const PLUGIN_PAGES = [
-        'active-record'      => 'Flight ActiveRecord - ORM/Active Record pattern for database models (official)',
-        'apm'                => 'Flight APM - Application performance monitoring (official)',
-        'async'              => 'Flight Async - Async/concurrent request handling (official)',
-        'comment-template'   => 'Comment Template - Template comment utilities',
-        'easy-query'         => 'Easy Query - Simplified database query builder',
-        'ghost-session'      => 'Ghostff Session - Advanced session manager with encryption support',
-        'jwt'                => 'Firebase JWT - JSON Web Token authentication',
-        'latte'              => 'Latte - Latte templating engine integration',
-        'migrations'         => 'BYJG Migrations - Database schema migration management',
-        'n0nag0n_wordpress'  => 'WordPress Integration - Run FlightPHP inside WordPress',
-        'permissions'        => 'Flight Permissions - Role-based access control (official)',
-        'php-cookie'         => 'PHP Cookie - Cookie management library',
-        'php-encryption'     => 'Defuse PHP Encryption - Symmetric encryption for sensitive data',
-        'php-file-cache'     => 'Flight Cache - File-based caching (official)',
-        'runway'             => 'Flight Runway - CLI tool for scaffolding and management (official)',
-        'session'            => 'Flight Session - Simple session handler (official)',
-        'simple-job-queue'   => 'Simple Job Queue - Background job processing',
-        'tracy'              => 'Tracy - Error handler and debugger integration',
-        'tracy-extensions'   => 'Tracy Extensions - FlightPHP-specific Tracy panels (official)',
-    ];
+    public function __construct(private ?DocsClient $docs = null)
+    {
+    }
 
     #[McpTool(
         name: 'get_docs_page',
         description: 'ALWAYS call this before writing any FlightPHP code. Fetches the official '
-            . 'FlightPHP documentation for a specific topic (routing, middleware, requests, responses, '
-            . 'templates, security, database, DI container, testing, etc.). Use this whenever a user '
-            . 'asks how to do something in FlightPHP, before suggesting any implementation. '
-            . 'Call list_docs_pages() first if unsure which topic slug to use.',
+            . 'FlightPHP documentation for a specific topic (install, routing, middleware, requests, '
+            . 'responses, templates, security, simple-pdo, DI container, testing, ai, etc.). '
+            . 'Use this whenever a user asks how to do something in FlightPHP, before suggesting any '
+            . 'implementation. Call list_docs_pages() first if unsure which topic slug to use. '
+            . 'For a new app, fetch "install" and "ai" before "routing".',
         annotations: new ToolAnnotations(
             title: 'Get FlightPHP Documentation Page',
             readOnlyHint: true,
@@ -82,26 +36,41 @@ class Fetcher
         )
     )]
     public function getDocsPage(
-        #[Schema(description: 'Documentation topic slug e.g. "routing", "middleware", "security". Call list_docs_pages to see all valid values.')]
-        #[CompletionProvider(values: ['routing', 'middleware', 'requests', 'responses', 'templates',
-            'configuration', 'autoloading', 'security', 'events', 'extending', 'filtering',
-            'collections', 'json', 'simple-pdo', 'dependency-injection-container', 'unit-testing',
-            'uploaded-file', 'ai', 'migrating-to-v3', 'why-frameworks', 'flight-vs-another-framework'])]
+        #[Schema(description: 'Documentation topic slug, for example "install", "routing", "middleware", "ai". Call list_docs_pages to see all valid values.')]
+        #[CompletionProvider(provider: LearnTopicCompletion::class)]
         string $topic
     ): string {
-        if (!array_key_exists($topic, self::DOCS_PAGES)) {
-            throw new \InvalidArgumentException(
-                "Unknown topic '$topic'. Call list_docs_pages() to see valid slugs and descriptions."
-            );
-        }
-        return $this->fetchDocsUrl(self::DOCS_BASE_URL . $topic);
+        return $this->fetchDocsUrl(DocsCatalog::docUrl($topic));
+    }
+
+    #[McpTool(
+        name: 'get_docs_section',
+        description: 'Fetches one heading from a FlightPHP learn or install page. Use this when the full '
+            . 'page is long and you need a single section such as "Resource Routing" or "Troubleshooting". '
+            . 'Call get_docs_page() when you need the whole page.',
+        annotations: new ToolAnnotations(
+            title: 'Get FlightPHP Documentation Section',
+            readOnlyHint: true,
+            destructiveHint: false,
+            idempotentHint: true,
+            openWorldHint: true,
+        )
+    )]
+    public function getDocsSection(
+        #[Schema(description: 'Documentation topic slug, for example "routing" or "install". Call list_docs_pages to see all valid values.')]
+        #[CompletionProvider(provider: LearnTopicCompletion::class)]
+        string $topic,
+        #[Schema(description: 'Heading text to extract, for example "Resource Routing" or "Troubleshooting". Matching is case-insensitive.')]
+        string $heading
+    ): string {
+        return MarkdownSections::extract($this->getDocsPage($topic), $heading);
     }
 
     #[McpTool(
         name: 'list_docs_pages',
-        description: 'Returns all available FlightPHP documentation topics with slugs and descriptions. '
-            . 'Call this when unsure which topic covers a FlightPHP feature, or at the start of a '
-            . 'FlightPHP session to understand what documentation is available.',
+        description: 'Returns all available FlightPHP documentation topics with slugs and descriptions, '
+            . 'including the install guide. Call this when unsure which topic covers a FlightPHP feature, '
+            . 'or at the start of a FlightPHP session to understand what documentation is available.',
         annotations: new ToolAnnotations(
             readOnlyHint: true,
             destructiveHint: false,
@@ -109,15 +78,9 @@ class Fetcher
             openWorldHint: false,
         )
     )]
-    public function listDocsPages(): string {
-        $lines = ["Available FlightPHP documentation topics:\n"];
-        foreach (self::DOCS_PAGES as $slug => $desc) {
-            $lines[] = "  $slug: $desc";
-        }
-        $lines[] = "\nUse get_docs_page(topic) to fetch content for any slug above.";
-        $lines[] = "\nFor step-by-step guides call list_guide_pages() or get_guide_page(guide).";
-        $lines[] = "For plugins and extensions call list_plugin_pages() or get_plugin_docs(plugin).";
-        return implode("\n", $lines);
+    public function listDocsPages(): string
+    {
+        return DocsCatalog::listDocs();
     }
 
     #[McpTool(
@@ -128,139 +91,119 @@ class Fetcher
             readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false,
         )
     )]
-    public function listGuidePages(): string {
-        $lines = ["Available FlightPHP guides:\n"];
-        foreach (self::GUIDE_PAGES as $slug => $desc) {
-            $lines[] = "  $slug: $desc";
-        }
-        $lines[] = "\nUse get_guide_page(guide) to fetch content for any guide above.";
-        return implode("\n", $lines);
+    public function listGuidePages(): string
+    {
+        return DocsCatalog::listGuides();
     }
 
     #[McpTool(
         name: 'get_guide_page',
         description: 'Fetches an official FlightPHP step-by-step guide. Call this when a user wants '
-            . 'to build a complete FlightPHP application (blog, REST API, etc.) or asks about best-practice '
-            . 'project structure, SOLID principles, or testing patterns. Available guides: "blog", "unit-testing".',
+            . 'to build a complete FlightPHP application or asks about project structure, SOLID principles, '
+            . 'or testing patterns. For a new app, also call get_docs_page("install"). '
+            . 'Available guides: "blog", "unit-testing".',
         annotations: new ToolAnnotations(
             title: 'Get FlightPHP Guide',
             readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true,
         )
     )]
     public function getGuidePage(
-        #[Schema(description: 'Guide slug: "blog" or "unit-testing"')]
-        #[CompletionProvider(values: ['blog', 'unit-testing'])]
+        #[Schema(description: 'Guide slug. Call list_guide_pages() for the valid values.')]
+        #[CompletionProvider(provider: GuideCompletion::class)]
         string $guide
     ): string {
-        if (!array_key_exists($guide, self::GUIDE_PAGES)) {
-            throw new \InvalidArgumentException("Unknown guide '$guide'. Valid slugs: " . implode(', ', array_keys(self::GUIDE_PAGES)));
-        }
-        return $this->fetchDocsUrl(self::GUIDES_BASE_URL . $guide);
+        return $this->fetchDocsUrl(DocsCatalog::guideUrl($guide));
     }
 
     #[McpTool(
         name: 'list_plugin_pages',
         description: 'Lists all FlightPHP plugins and extensions with their slugs and descriptions. '
             . 'Call this when a user asks about adding functionality to FlightPHP (database, auth, caching, '
-            . 'sessions, templating, CLI, testing, monitoring, encryption, queues, etc.) to find the right plugin.',
+            . 'sessions, templating, email, CLI, testing, monitoring, encryption, queues, etc.) to find the right plugin. '
+            . 'The official skeleton uses the twig plugin.',
         annotations: new ToolAnnotations(
             readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false,
         )
     )]
-    public function listPluginPages(): string {
-        $lines = ["Available FlightPHP plugins and extensions:\n"];
-        foreach (self::PLUGIN_PAGES as $slug => $desc) {
-            $lines[] = "  $slug: $desc";
-        }
-        $lines[] = "\nUse get_plugin_docs(plugin) to fetch full documentation for any plugin above.";
-        return implode("\n", $lines);
+    public function listPluginPages(): string
+    {
+        return DocsCatalog::listPlugins();
     }
 
     #[McpTool(
         name: 'get_plugin_docs',
         description: 'Fetches documentation for a FlightPHP plugin or extension. Call this before '
             . 'helping a user integrate any FlightPHP plugin (ORM, auth, caching, sessions, templating, '
-            . 'CLI, APM, encryption, job queues, etc.). Call list_plugin_pages() to see all available plugins.',
+            . 'email, CLI, APM, encryption, job queues, etc.). Call list_plugin_pages() to see all available plugins.',
         annotations: new ToolAnnotations(
             title: 'Get FlightPHP Plugin Documentation',
             readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true,
         )
     )]
     public function getPluginDocs(
-        #[Schema(description: 'Plugin slug, e.g. "active-record", "session", "jwt". Call list_plugin_pages() for all valid values.')]
-        #[CompletionProvider(values: ['active-record', 'apm', 'async', 'comment-template', 'easy-query',
-            'ghost-session', 'jwt', 'latte', 'migrations', 'n0nag0n_wordpress', 'permissions',
-            'php-cookie', 'php-encryption', 'php-file-cache', 'runway', 'session',
-            'simple-job-queue', 'tracy', 'tracy-extensions'])]
+        #[Schema(description: 'Plugin slug, for example "twig", "active-record", "session". Call list_plugin_pages() for all valid values.')]
+        #[CompletionProvider(provider: PluginCompletion::class)]
         string $plugin
     ): string {
-        if (!array_key_exists($plugin, self::PLUGIN_PAGES)) {
-            throw new \InvalidArgumentException("Unknown plugin '$plugin'. Call list_plugin_pages() to see valid slugs.");
-        }
-        return $this->fetchDocsUrl(self::PLUGINS_BASE_URL . $plugin);
+        return $this->fetchDocsUrl(DocsCatalog::pluginUrl($plugin));
     }
 
     #[McpTool(
         name: 'search_docs',
-        description: 'Searches the entire FlightPHP documentation site (core docs, guides, AND plugins) '
-            . 'for a keyword or topic. Use this when unsure which specific page covers what the user needs, '
-            . 'or to discover relevant pages across all sections at once. Returns a list of matching pages '
-            . 'with titles, URLs, and excerpts. Follow up with get_docs_page(), get_guide_page(), '
-            . 'get_plugin_docs(), or fetch_url() to read the full content of relevant results.',
+        description: 'Searches FlightPHP documentation across core docs, guides, and plugins. '
+            . 'Uses the docs site search and the local page catalog, and returns canonical '
+            . 'https://docs.flightphp.com URLs. Use this when unsure which page covers the question. '
+            . 'Follow up with get_docs_page(), get_guide_page(), get_plugin_docs(), get_docs_section(), or fetch_url().',
         annotations: new ToolAnnotations(
             title: 'Search FlightPHP Documentation',
             readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true,
         )
     )]
     public function searchDocs(
-        #[Schema(description: 'Search query, e.g. "authentication", "database", "caching", "file upload"')]
+        #[Schema(description: 'Search query, for example "authentication", "twig", "simplepdo", "file upload"')]
         string $query
     ): string {
-        $url = 'https://docs.flightphp.com/en/v3/search?q=' . urlencode($query);
-        $context = stream_context_create(['http' => ['header' => "Accept: text/html\r\n", 'timeout' => 10]]);
-        $html = @file_get_contents($url, false, $context);
-        if ($html === false) {
-            throw new \RuntimeException("Failed to search FlightPHP docs for '$query'.");
+        $query = trim($query);
+        if ($query === '') {
+            throw new \InvalidArgumentException('A search query is required.');
         }
 
-        // Extract result links: <a href="/en/v3/..."><strong>Title</strong></a>
-        preg_match_all(
-            '/<a\s+href="(\/en\/v3\/[^"]+)"[^>]*>\s*<strong>([^<]+)<\/strong>\s*<\/a>/i',
-            $html, $linkMatches, PREG_SET_ORDER
-        );
-
-        if (empty($linkMatches)) {
-            return "No results found for '$query' in the FlightPHP documentation.";
+        $liveFailed = false;
+        try {
+            $html = $this->docs()->fetch(DocsCatalog::searchUrl($query), 'text/html');
+            $siteHits = DocsSearch::parseHtml($html);
+        } catch (\Throwable) {
+            $liveFailed = true;
+            $siteHits = [];
         }
 
-        // Extract list-item blocks to get excerpts
-        preg_match_all('/<li[^>]*class="[^"]*list-group-item[^"]*"[^>]*>(.*?)<\/li>/is', $html, $itemMatches);
+        $results = DocsSearch::merge($siteHits, DocsSearch::catalogHits($query));
 
-        $lines = ["FlightPHP docs search results for '$query':\n"];
-        foreach ($linkMatches as $i => $match) {
-            $path = $match[1];
-            $title = html_entity_decode(trim($match[2]), ENT_QUOTES | ENT_HTML5);
-            $fullUrl = 'https://docs.flightphp.com' . $path;
+        return DocsSearch::format($query, $results, $liveFailed);
+    }
 
-            // Extract plain-text excerpt from corresponding list item
-            $excerpt = '';
-            if (isset($itemMatches[1][$i])) {
-                $text = preg_replace('/<[^>]+>/', ' ', $itemMatches[1][$i]);
-                $text = html_entity_decode(preg_replace('/\s+/', ' ', $text), ENT_QUOTES | ENT_HTML5);
-                $excerpt = ' — ' . trim(substr(trim($text), 0, 120));
-            }
-
-            $lines[] = sprintf("  [%d] %s\n      URL: %s%s", $i + 1, $title, $fullUrl, $excerpt);
-        }
-
-        $lines[] = sprintf("\n%d result(s). Fetch a page with get_docs_page(), get_guide_page(), get_plugin_docs(), or fetch_url().", count($linkMatches));
-        return implode("\n", $lines);
+    #[McpTool(
+        name: 'lookup_api',
+        description: 'Checks a FlightPHP symbol or habit against known documentation footguns before you write code. '
+            . 'Use this for Flight::get, PdoWrapper, Flight::render, Flight::path, route return values, AGENTS.md, '
+            . 'Latte versus Twig, and method filters versus middleware. Then open the page it names. '
+            . 'This does not invent method signatures.',
+        annotations: new ToolAnnotations(
+            title: 'Look Up a FlightPHP API Footgun',
+            readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false,
+        )
+    )]
+    public function lookupApi(
+        #[Schema(description: 'Symbol or habit to check, for example "Flight::get", "PdoWrapper", "Flight::render", "AGENTS.md"')]
+        string $symbol
+    ): string {
+        return ApiNotes::explain($symbol);
     }
 
     #[McpTool(
         name: 'fetch_url',
         description: 'Fetches a FlightPHP documentation URL directly. Only use this when '
-            . 'get_docs_page() does not cover the exact page needed (e.g., changelog, API ref). '
+            . 'get_docs_page() does not cover the exact page needed. '
             . 'URLs must be on the docs.flightphp.com domain. Prefer get_docs_page() for standard topics.',
         annotations: new ToolAnnotations(
             readOnlyHint: true,
@@ -278,18 +221,19 @@ class Fetcher
     ): string {
         if (!str_starts_with($url, 'https://docs.flightphp.com/')) {
             throw new \InvalidArgumentException(
-                "Only URLs on https://docs.flightphp.com/ are permitted. Use get_docs_page() for standard topics."
+                'Only URLs on https://docs.flightphp.com/ are permitted. Use get_docs_page() for standard topics.'
             );
         }
+
         return $this->fetchDocsUrl($url);
     }
 
     #[McpTool(
         name: 'generate_plugin_page',
-        description: 'Generates a properly-structured FlightPHP docs plugin page in markdown. '
-            . 'Plugin pages focus on Flight-native integration (Flight::register, DI wiring, route usage), '
-            . 'not generic library usage. Returns a complete markdown string ready to save as a .md file '
-            . 'in the awesome-plugins/ section of the docs site.',
+        description: 'Generates a FlightPHP docs plugin page in markdown. Plugin pages document '
+            . 'Flight-native integration (service registration, route usage), not generic library usage. '
+            . 'Empty sections are omitted. Pass the code you already have. Do not leave placeholder commands '
+            . 'for the reader to fill in. Returns markdown for the awesome-plugins/ section of the docs site.',
         annotations: new ToolAnnotations(
             readOnlyHint: true,
             destructiveHint: false,
@@ -298,70 +242,44 @@ class Fetcher
         )
     )]
     public function generatePluginPage(
-        #[Schema(description: 'Plugin display name, e.g. "Flight Session"')]
+        #[Schema(description: 'Plugin display name, for example "Flight Session"')]
         string $name,
-        #[Schema(description: 'One-paragraph description of what the plugin does')]
+        #[Schema(description: 'Opening paragraph describing what the plugin does')]
         string $description,
-        #[Schema(description: 'Full GitHub repository URL, e.g. https://github.com/flightphp/session')]
+        #[Schema(description: 'Full GitHub repository URL, for example https://github.com/flightphp/session')]
         string $github_url = '',
-        #[Schema(description: 'Composer package name, e.g. flightphp/session')]
+        #[Schema(description: 'Composer package name, for example flightphp/session')]
         string $composer_package = '',
-        #[Schema(description: 'PHP code showing Flight-native setup: Flight::register(), DI container wiring, etc.')]
+        #[Schema(description: 'PHP code showing Flight-native setup: Flight::register(), or the skeleton services.php wiring')]
         string $flight_setup_example = '',
         #[Schema(description: 'PHP code showing usage inside a Flight route or service')]
         string $usage_example = '',
-        #[Schema(description: 'Free text describing available configuration options')]
-        string $config_options = ''
+        #[Schema(description: 'Prose or a markdown table of configuration options. Section omitted if empty.')]
+        string $config_options = '',
+        #[Schema(description: 'Newline-separated see-also entries. Use "Label | https://..." for a link. Section omitted if empty.')]
+        string $see_also = '',
+        #[Schema(description: 'Newline-separated troubleshooting notes. Section omitted if empty.')]
+        string $troubleshooting = ''
     ): string {
-        $lines = [];
-
-        $lines[] = "# {$name}";
-        $lines[] = '';
-        $lines[] = $description;
-
-        if ($github_url !== '') {
-            $lines[] = '';
-            $lines[] = "Visit the [Github repository]({$github_url}) for the full source code and details.";
-        }
-
-        $lines[] = '';
-        $lines[] = '## Installation';
-        $lines[] = '';
-        $lines[] = 'Install the plugin via Composer:';
-        $lines[] = '';
-        $lines[] = '```bash';
-        $lines[] = $composer_package !== '' ? "composer require {$composer_package}" : '# TODO: composer require your-package-here';
-        $lines[] = '```';
-
-        $lines[] = '';
-        $lines[] = '## Setup in Flight';
-        $lines[] = '';
-        $lines[] = '```php';
-        $lines[] = $flight_setup_example !== '' ? $flight_setup_example : '// TODO: Register the plugin with Flight here, e.g. Flight::register(...)';
-        $lines[] = '```';
-
-        $lines[] = '';
-        $lines[] = '## Usage';
-        $lines[] = '';
-        $lines[] = '```php';
-        $lines[] = $usage_example !== '' ? $usage_example : '// TODO: Show how to use the plugin inside a Flight route or service';
-        $lines[] = '```';
-
-        if ($config_options !== '') {
-            $lines[] = '';
-            $lines[] = '## Configuration';
-            $lines[] = '';
-            $lines[] = $config_options;
-        }
-
-        return implode("\n", $lines);
+        return PageTemplates::plugin(
+            $name,
+            $description,
+            $github_url,
+            $composer_package,
+            $flight_setup_example,
+            $usage_example,
+            $config_options,
+            $see_also,
+            $troubleshooting,
+        );
     }
 
     #[McpTool(
         name: 'generate_learn_page',
-        description: 'Generates a properly-structured FlightPHP core documentation page in markdown. '
-            . 'Learn pages cover functionality built into the Flight framework — no installation step. '
-            . 'Returns a complete markdown string ready to save as a .md file in the learn/ section of the docs site.',
+        description: 'Generates a FlightPHP core documentation page in markdown. Learn pages cover '
+            . 'functionality built into the framework and use Overview, Understanding, Basic Usage, '
+            . 'Advanced Usage, Key Points, See Also, Troubleshooting, and Changelog. Empty sections are omitted. '
+            . 'Pass the prose and code you already have. Returns markdown for the learn/ section of the docs site.',
         annotations: new ToolAnnotations(
             readOnlyHint: true,
             destructiveHint: false,
@@ -370,59 +288,44 @@ class Fetcher
         )
     )]
     public function generateLearnPage(
-        #[Schema(description: 'Page title, e.g. "Routing" or "Middleware"')]
+        #[Schema(description: 'Page title, for example "Routing" or "Middleware"')]
         string $title,
-        #[Schema(description: 'Concept introduction paragraph explaining what this feature does')]
+        #[Schema(description: 'Overview paragraph explaining what this feature does')]
         string $description,
-        #[Schema(description: 'PHP code for the basic usage block')]
+        #[Schema(description: 'Understanding section: why the feature exists and how it fits. Section omitted if empty.')]
+        string $understanding = '',
+        #[Schema(description: 'PHP code for the Basic Usage section. Section omitted if empty.')]
         string $basic_example = '',
-        #[Schema(description: 'PHP code for a more complex or advanced scenario (section omitted if empty)')]
+        #[Schema(description: 'PHP code for the Advanced Usage section. Section omitted if empty.')]
         string $advanced_example = '',
-        #[Schema(description: 'Newline-separated bullet points for a Key Points section (section omitted if empty)')]
-        string $key_points = ''
+        #[Schema(description: 'Newline-separated Key Points. Section omitted if empty.')]
+        string $key_points = '',
+        #[Schema(description: 'Newline-separated see-also entries. Use "Label | https://..." for a link. Section omitted if empty.')]
+        string $see_also = '',
+        #[Schema(description: 'Newline-separated troubleshooting notes. Section omitted if empty.')]
+        string $troubleshooting = '',
+        #[Schema(description: 'Newline-separated changelog entries, for example "v3.18.0 - Added SimplePdo". Section omitted if empty.')]
+        string $changelog = ''
     ): string {
-        $lines = [];
-
-        $lines[] = "# {$title}";
-        $lines[] = '';
-        $lines[] = $description;
-        $lines[] = '';
-        $lines[] = '## Basic Usage';
-        $lines[] = '';
-        $lines[] = '```php';
-        $lines[] = $basic_example !== '' ? $basic_example : '// TODO: Add a basic code example here';
-        $lines[] = '```';
-
-        if ($advanced_example !== '') {
-            $lines[] = '';
-            $lines[] = '## Advanced Usage';
-            $lines[] = '';
-            $lines[] = '```php';
-            $lines[] = $advanced_example;
-            $lines[] = '```';
-        }
-
-        if ($key_points !== '') {
-            $lines[] = '';
-            $lines[] = '## Key Points';
-            $lines[] = '';
-            foreach (explode("\n", $key_points) as $point) {
-                $point = trim($point);
-                if ($point === '') {
-                    continue;
-                }
-                $lines[] = str_starts_with($point, '-') ? $point : "- {$point}";
-            }
-        }
-
-        return implode("\n", $lines);
+        return PageTemplates::learn(
+            $title,
+            $description,
+            $understanding,
+            $basic_example,
+            $advanced_example,
+            $key_points,
+            $see_also,
+            $troubleshooting,
+            $changelog,
+        );
     }
 
     #[McpTool(
         name: 'generate_guide_page',
-        description: 'Generates a properly-structured FlightPHP step-by-step guide page in markdown. '
-            . 'Guide pages walk readers through building something complete with Flight end-to-end. '
-            . 'Returns a complete markdown string ready to save as a .md file in the guides/ section of the docs site.',
+        description: 'Generates a FlightPHP step-by-step guide page in markdown. Pass step titles, '
+            . 'or steps with bodies separated by a line that is only ---. The first line of each step is the title '
+            . 'and the rest is the body. Empty step lists produce no Step sections. '
+            . 'Returns markdown for the guides/ section of the docs site.',
         annotations: new ToolAnnotations(
             readOnlyHint: true,
             destructiveHint: false,
@@ -431,73 +334,34 @@ class Fetcher
         )
     )]
     public function generateGuidePage(
-        #[Schema(description: 'Guide title, e.g. "Building a REST API with Flight"')]
+        #[Schema(description: 'Guide title, for example "Building a REST API with Flight"')]
         string $title,
         #[Schema(description: 'What the reader will have built by the end of the guide')]
         string $description,
-        #[Schema(description: 'Newline-separated list of prerequisites. Defaults to PHP 8.1+ and Composer if empty.')]
+        #[Schema(description: 'Newline-separated prerequisites. Defaults to PHP 8.1+ and Composer if empty.')]
         string $prerequisites = '',
-        #[Schema(description: 'Newline-separated step titles. Each line becomes a numbered ## Step N: section. Defaults to 3 generic placeholder steps if empty.')]
-        string $steps = ''
+        #[Schema(description: 'Step titles, one per line. For bodies, separate steps with a line that is only ---. The first line of a step is the title.')]
+        string $steps = '',
+        #[Schema(description: 'Newline-separated see-also entries. Use "Label | https://..." for a link. Section omitted if empty.')]
+        string $see_also = ''
     ): string {
-        $lines = [];
-
-        $lines[] = "# {$title}";
-        $lines[] = '';
-        $lines[] = $description;
-        $lines[] = '';
-        $lines[] = '## Prerequisites';
-        $lines[] = '';
-
-        if ($prerequisites !== '') {
-            foreach (explode("\n", $prerequisites) as $prereq) {
-                $prereq = trim($prereq);
-                if ($prereq === '') {
-                    continue;
-                }
-                $lines[] = str_starts_with($prereq, '-') ? $prereq : "- {$prereq}";
-            }
-        } else {
-            $lines[] = '- PHP 8.1+';
-            $lines[] = '- Composer';
-        }
-
-        $stepTitles = [];
-        if ($steps !== '') {
-            foreach (explode("\n", $steps) as $step) {
-                $step = trim($step);
-                if ($step !== '') {
-                    $stepTitles[] = $step;
-                }
-            }
-        }
-
-        if (empty($stepTitles)) {
-            $stepTitles = ['Getting Started', 'Implementation', 'Testing'];
-        }
-
-        foreach ($stepTitles as $i => $stepTitle) {
-            $lines[] = '';
-            $lines[] = '## Step ' . ($i + 1) . ": {$stepTitle}";
-            $lines[] = '';
-            $lines[] = 'TODO: Fill in this step.';
-        }
-
-        return implode("\n", $lines);
+        return PageTemplates::guide($title, $description, $prerequisites, $steps, $see_also);
     }
 
     #[McpResource(
         uri: 'flightphp://docs/index',
         name: 'flightphp-docs-index',
-        description: 'Index of all FlightPHP documentation topics. Read at the start of any '
+        description: 'Index of all FlightPHP documentation topics, including install. Read at the start of any '
             . 'FlightPHP development session to understand what documentation is available.',
         mimeType: 'text/plain',
     )]
-    public function getDocsIndex(): string {
-        $lines = ["FlightPHP Documentation Index\nBase URL: " . self::DOCS_BASE_URL . "\n"];
-        foreach (self::DOCS_PAGES as $slug => $desc) {
-            $lines[] = "$slug: $desc";
+    public function getDocsIndex(): string
+    {
+        $lines = ["FlightPHP Documentation Index\n"];
+        foreach (DocsCatalog::PAGES + DocsCatalog::LEARN as $slug => $desc) {
+            $lines[] = DocsCatalog::docUrl($slug) . " — $slug: $desc";
         }
+
         return implode("\n", $lines);
     }
 
@@ -507,29 +371,28 @@ class Fetcher
         description: 'Index of all FlightPHP official step-by-step guides.',
         mimeType: 'text/plain',
     )]
-    public function getGuidesIndex(): string {
-        $lines = ["FlightPHP Guides Index\nBase URL: " . self::GUIDES_BASE_URL . "\n"];
-        foreach (self::GUIDE_PAGES as $slug => $desc) {
-            $lines[] = "$slug: $desc";
+    public function getGuidesIndex(): string
+    {
+        $lines = ["FlightPHP Guides Index\n"];
+        foreach (DocsCatalog::GUIDES as $slug => $desc) {
+            $lines[] = DocsCatalog::guideUrl($slug) . " — $slug: $desc";
         }
+
         return implode("\n", $lines);
     }
 
     #[McpResourceTemplate(
         uriTemplate: 'flightphp://guides/{guide}',
         name: 'flightphp-guide-page',
-        description: 'Content of a FlightPHP guide by slug (e.g. flightphp://guides/blog). '
+        description: 'Content of a FlightPHP guide by slug (for example flightphp://guides/blog). '
             . 'Read flightphp://guides/index for valid slugs.',
         mimeType: 'text/plain',
     )]
     public function getGuideTopic(
-        #[CompletionProvider(values: ['blog', 'unit-testing'])]
+        #[CompletionProvider(provider: GuideCompletion::class)]
         string $guide
     ): string {
-        if (!array_key_exists($guide, self::GUIDE_PAGES)) {
-            throw new \InvalidArgumentException("Unknown guide '$guide'. See flightphp://guides/index.");
-        }
-        return $this->fetchDocsUrl(self::GUIDES_BASE_URL . $guide);
+        return $this->fetchDocsUrl(DocsCatalog::guideUrl($guide));
     }
 
     #[McpResource(
@@ -538,11 +401,13 @@ class Fetcher
         description: 'Index of all FlightPHP plugins and extensions with slugs and descriptions.',
         mimeType: 'text/plain',
     )]
-    public function getPluginsIndex(): string {
-        $lines = ["FlightPHP Plugins Index\nBase URL: " . self::PLUGINS_BASE_URL . "\n"];
-        foreach (self::PLUGIN_PAGES as $slug => $desc) {
-            $lines[] = "$slug: $desc";
+    public function getPluginsIndex(): string
+    {
+        $lines = ["FlightPHP Plugins Index\n"];
+        foreach (DocsCatalog::PLUGINS as $slug => $desc) {
+            $lines[] = DocsCatalog::pluginUrl($slug) . " — $slug: $desc";
         }
+
         return implode("\n", $lines);
     }
 
@@ -550,48 +415,38 @@ class Fetcher
         uriTemplate: 'flightphp://plugins/{plugin}',
         name: 'flightphp-plugin-page',
         description: 'Content of a FlightPHP plugin documentation page '
-            . '(e.g. flightphp://plugins/active-record). Read flightphp://plugins/index for valid slugs.',
+            . '(for example flightphp://plugins/twig). Read flightphp://plugins/index for valid slugs.',
         mimeType: 'text/plain',
     )]
     public function getPluginTopic(
-        #[CompletionProvider(values: ['active-record', 'apm', 'async', 'comment-template', 'easy-query',
-            'ghost-session', 'jwt', 'latte', 'migrations', 'n0nag0n_wordpress', 'permissions',
-            'php-cookie', 'php-encryption', 'php-file-cache', 'runway', 'session',
-            'simple-job-queue', 'tracy', 'tracy-extensions'])]
+        #[CompletionProvider(provider: PluginCompletion::class)]
         string $plugin
     ): string {
-        if (!array_key_exists($plugin, self::PLUGIN_PAGES)) {
-            throw new \InvalidArgumentException("Unknown plugin '$plugin'. See flightphp://plugins/index.");
-        }
-        return $this->fetchDocsUrl(self::PLUGINS_BASE_URL . $plugin);
+        return $this->fetchDocsUrl(DocsCatalog::pluginUrl($plugin));
     }
 
     #[McpResourceTemplate(
         uriTemplate: 'flightphp://docs/{topic}',
         name: 'flightphp-docs-page',
         description: 'Content of a FlightPHP documentation page by topic slug '
-            . '(e.g. flightphp://docs/routing). Read flightphp://docs/index for valid slugs.',
+            . '(for example flightphp://docs/routing or flightphp://docs/install). '
+            . 'Read flightphp://docs/index for valid slugs.',
         mimeType: 'text/plain',
     )]
     public function getDocsTopic(
-        #[CompletionProvider(values: ['routing', 'middleware', 'requests', 'responses', 'templates',
-            'configuration', 'autoloading', 'security', 'events', 'extending', 'filtering',
-            'collections', 'json', 'simple-pdo', 'dependency-injection-container', 'unit-testing',
-            'uploaded-file', 'ai', 'migrating-to-v3', 'why-frameworks', 'flight-vs-another-framework'])]
+        #[CompletionProvider(provider: LearnTopicCompletion::class)]
         string $topic
     ): string {
-        if (!array_key_exists($topic, self::DOCS_PAGES)) {
-            throw new \InvalidArgumentException("Unknown topic '$topic'. See flightphp://docs/index.");
-        }
-        return $this->fetchDocsUrl(self::DOCS_BASE_URL . $topic);
+        return $this->fetchDocsUrl(DocsCatalog::docUrl($topic));
     }
 
-    private function fetchDocsUrl(string $url): string {
-        $context = stream_context_create(['http' => ['header' => "Accept: text/plain\r\n", 'timeout' => 10]]);
-        $content = @file_get_contents($url, false, $context);
-        if ($content === false) {
-            throw new \RuntimeException("Failed to fetch '$url'. The page may not exist or the docs site may be unreachable.");
-        }
-        return $content;
+    private function fetchDocsUrl(string $url): string
+    {
+        return $this->docs()->fetch($url);
+    }
+
+    private function docs(): DocsClient
+    {
+        return $this->docs ??= new DocsClient();
     }
 }
